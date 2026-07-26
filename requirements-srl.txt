@@ -1,0 +1,8 @@
+torch
+transformers
+datasets
+seqeval
+evaluate
+sklearn-crfsuite
+spacy
+tqdm
