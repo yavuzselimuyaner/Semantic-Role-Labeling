@@ -1,8 +1,11 @@
 torch
-transformers
+transformers>=4.38
+sentencepiece
+protobuf
 datasets
 seqeval
 evaluate
 sklearn-crfsuite
-spacy
+spacy>=3.7
 tqdm
+matplotlib
