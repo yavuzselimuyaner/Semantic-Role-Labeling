@@ -264,22 +264,25 @@ class CRFModel:
 
     def __init__(
         self,
-        max_iterations: int = 200,
+        algorithm: str = "l2sgd",
+        max_iterations: int = 80,
         c1: float = 0.1,
-        c2: float = 0.1,
-        min_freq: int = 3,
+        c2: float = 0.5,
+        min_freq: int = 5,
         all_possible_transitions: bool = False,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
-        self.model = sklearn_crfsuite.CRF(
-            algorithm="lbfgs",
-            c1=c1,
+        kwargs = dict(
+            algorithm=algorithm,
             c2=c2,
             min_freq=min_freq,
             max_iterations=max_iterations,
             all_possible_transitions=all_possible_transitions,
             verbose=verbose,
         )
+        if algorithm == "lbfgs":
+            kwargs["c1"] = c1
+        self.model = sklearn_crfsuite.CRF(**kwargs)
         self._fitted = False
 
     def fit(
