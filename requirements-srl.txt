@@ -1,5 +1,9 @@
 torch
 transformers>=4.38
+accelerate
+peft
+bitsandbytes
+pydantic>=2.0
 sentencepiece
 protobuf
 datasets

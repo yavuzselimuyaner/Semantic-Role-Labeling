@@ -1,5 +1,6 @@
 SRL_data/models/
 SRL_data/results_v2/
+SRL_data/results_v3/
 SRL_data/propbank_preprocessed.json
 SRL_data/propbank_es_preprocessed.json
 __pycache__/

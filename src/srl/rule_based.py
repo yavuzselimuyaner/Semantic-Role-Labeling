@@ -148,15 +148,26 @@ class RuleBasedSRL:
         return f"{self._argm_prefix}{suffix}"
 
     def parse_docs(self, instances: Sequence[dict]) -> List[Doc]:
-        """Parse pre-tokenized instances without re-tokenization (1-to-1 token alignment)."""
-        all_words = [inst["words"] for inst in instances]
-        all_docs: List[Doc] = []
-        for st in range(0, len(all_words), self.batch_size):
-            batch = [Doc(self.nlp.vocab, words=w) for w in all_words[st : st + self.batch_size]]
+        """Parse pre-tokenized instances without re-tokenization, deduplicating shared sentences."""
+        unique_keys = {}
+        unique_words = []
+        inst_to_uid = []
+        for inst in instances:
+            key = tuple(inst["words"])
+            uid = unique_keys.get(key)
+            if uid is None:
+                uid = len(unique_words)
+                unique_keys[key] = uid
+                unique_words.append(inst["words"])
+            inst_to_uid.append(uid)
+
+        parsed_unique: List[Doc] = []
+        for st in range(0, len(unique_words), self.batch_size):
+            batch = [Doc(self.nlp.vocab, words=w) for w in unique_words[st : st + self.batch_size]]
             for _, comp in self.nlp.pipeline:
                 batch = list(comp.pipe(batch))
-            all_docs.extend(batch)
-        return all_docs
+            parsed_unique.extend(batch)
+        return [parsed_unique[uid] for uid in inst_to_uid]
 
     def predict_batch(self, instances: Sequence[dict], docs: Optional[Sequence[Doc]] = None) -> List[List[str]]:
         if docs is None:
