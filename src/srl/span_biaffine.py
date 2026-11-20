@@ -12,6 +12,8 @@ import random
 import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -46,7 +48,7 @@ def _load_tokenizer(model_name: str):
 
 
 class GroupedSentenceDataset(Dataset):
-    """Sentence-level multi-predicate dataset (encodes each unique sentence once)."""
+    """Sentence-level multi-predicate dataset (pre-tokenizes each unique sentence once)."""
 
     def __init__(
         self,
@@ -55,21 +57,22 @@ class GroupedSentenceDataset(Dataset):
         role2id: Dict[str, int],
         max_length: int = 256,
     ):
-        self.records = list(grouped_sentences)
-        self.tokenizer = tokenizer
-        self.role2id = role2id
-        self.max_length = max_length
+        self.items: List[Dict[str, object]] = []
+        for rec in grouped_sentences:
+            self.items.append(self._encode_one(rec, tokenizer, role2id, max_length))
 
-    def __len__(self) -> int:
-        return len(self.records)
-
-    def __getitem__(self, idx: int) -> Dict[str, object]:
-        rec = self.records[idx]
+    @staticmethod
+    def _encode_one(
+        rec: dict,
+        tokenizer,
+        role2id: Dict[str, int],
+        max_length: int,
+    ) -> Dict[str, object]:
         words = rec["words"]
-        enc = self.tokenizer(
+        enc = tokenizer(
             words,
             is_split_into_words=True,
-            max_length=self.max_length,
+            max_length=max_length,
             truncation=True,
             padding=False,
         )
@@ -100,7 +103,7 @@ class GroupedSentenceDataset(Dataset):
             pred_positions.append(p_kept)
             smap: Dict[Tuple[int, int], int] = {}
             for role, s_orig, e_orig in spans:
-                r_id = self.role2id.get(role)
+                r_id = role2id.get(role)
                 if r_id is None:
                     continue
                 s_k = orig_to_kept.get(s_orig)
@@ -119,6 +122,12 @@ class GroupedSentenceDataset(Dataset):
             "orig_indices": rec["orig_indices"],
             "orig_len": len(words),
         }
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __getitem__(self, idx: int) -> Dict[str, object]:
+        return self.items[idx]
 
 
 def make_grouped_collate_fn(pad_token_id: int):
@@ -507,7 +516,7 @@ class SpanBiaffineTrainer:
         train_instances: Sequence[dict],
         dev_instances: Optional[Sequence[dict]] = None,
         save_path: Optional[str] = None,
-        num_workers: int = 2,
+        num_workers: int = 0,
     ) -> List[Dict[str, float]]:
         from transformers import get_cosine_schedule_with_warmup
 
@@ -518,7 +527,7 @@ class SpanBiaffineTrainer:
             batch_size=self.batch_size,
             shuffle=True,
             collate_fn=self.collate_fn,
-            num_workers=num_workers if self.device.type == "cuda" else 0,
+            num_workers=num_workers,
             pin_memory=(self.device.type == "cuda"),
         )
 
@@ -541,7 +550,8 @@ class SpanBiaffineTrainer:
         print(
             f"Training Span-Biaffine ({self.model_name}) on {len(train_instances):,} pred instances "
             f"grouped into {len(grouped_train):,} unique sentences ({len(train_instances)/max(1,len(grouped_train)):.2f}x speedup) "
-            f"| device={self.device} | AMP={use_amp} ({amp_dtype})"
+            f"| device={self.device} | AMP={use_amp} ({amp_dtype})",
+            flush=True,
         )
 
         for epoch in range(1, self.epochs + 1):
@@ -587,7 +597,8 @@ class SpanBiaffineTrainer:
                 rec.update({"dev_p": dev_m["precision"], "dev_r": dev_m["recall"], "dev_f1": dev_m["f1"]})
                 print(
                     f"  Epoch {epoch} ({ep_sec}s): loss={avg_loss:.4f} | "
-                    f"Dev P={dev_m['precision']:.4f} R={dev_m['recall']:.4f} F1={dev_m['f1']:.4f}"
+                    f"Dev P={dev_m['precision']:.4f} R={dev_m['recall']:.4f} F1={dev_m['f1']:.4f}",
+                    flush=True,
                 )
                 if dev_m["f1"] > best_dev_f1:
                     best_dev_f1 = dev_m["f1"]
@@ -624,7 +635,7 @@ class SpanBiaffineTrainer:
         self,
         instances: Sequence[dict],
         enforce_unique_core: bool = True,
-        num_workers: int = 2,
+        num_workers: int = 0,
         show_progress: bool = True,
     ) -> Tuple[List[List[str]], float]:
         """Predict BIO sequences aligned 1-to-1 with `instances` and return avg latency (ms/instance)."""
@@ -636,7 +647,7 @@ class SpanBiaffineTrainer:
             batch_size=self.batch_size * 2,
             shuffle=False,
             collate_fn=self.collate_fn,
-            num_workers=num_workers if self.device.type == "cuda" else 0,
+            num_workers=num_workers,
             pin_memory=(self.device.type == "cuda"),
         )
         self.net.eval()

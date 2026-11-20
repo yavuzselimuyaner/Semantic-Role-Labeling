@@ -384,7 +384,7 @@ class TransformerSRLModel:
         train_instances: Sequence[dict],
         dev_instances: Optional[Sequence[dict]] = None,
         save_path: Optional[str] = None,
-        num_workers: int = 2,
+        num_workers: int = 0,
     ) -> List[Dict[str, float]]:
         train_ds = SRLWordDataset(train_instances, self.tokenizer, self.label2id, self.max_length)
         train_dl = DataLoader(
@@ -392,7 +392,7 @@ class TransformerSRLModel:
             batch_size=self.batch_size,
             shuffle=True,
             collate_fn=self.collate_fn,
-            num_workers=num_workers if self.device.type == "cuda" else 0,
+            num_workers=num_workers,
             pin_memory=(self.device.type == "cuda"),
         )
 
